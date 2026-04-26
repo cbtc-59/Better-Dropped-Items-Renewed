@@ -70,7 +70,7 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         float blockHeight = 0.0F;  // 初始化方块高度
         
         // 判断是否应该旋转
-        if (is3DModel == true) {
+        if (is3DModel) {
             Block block = ((BlockItem) item).getBlock();
             World world = dropped.getWorld();
             BlockPos blockPos = dropped.getBlockPos();
@@ -84,16 +84,14 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         }
         
         // 调试输出：在游戏聊天栏打印物品的详细信息（每秒一次）
-        if (dropped.age % 60 == 0 && BetterDroppedItems.DEBUG_MODE == true) {
+        if (dropped.age % 60 == 0 && BetterDroppedItems.DEBUG_MODE) {
             String msg = String.format("[BDI调试] 物品: %s | 方块高度: %.4f | 是否旋转: %b | 是否为3D模型: %b | 堆叠数: %d",
                 item.getName().getString(), blockHeight, shouldRotateRender, is3DModel, itemStack.getCount());
             MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.literal(msg));
         }
 
-        // 对3D物品和需要旋转的2D进行微调
-        if (is3DModel == true || shouldRotateRender == true){
-            matrix.translate(0, -0.0625, 0);
-        }
+        // 在旋转90度前对物品的渲染位置进行调整
+        matrix.translate(0, -0.0625, 0);
 
         // 立起旋转：只有开启旋转渲染的物品才执行
         if (shouldRotateRender) {
@@ -132,7 +130,7 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         }
 
         // 对2D物品进行微调
-        if (is3DModel == false){
+        if (!is3DModel){
             matrix.translate(0, 0.0625, -0.109375);
         }
 
@@ -141,10 +139,10 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         BlockPos blockPos = dropped.getBlockPos();
         if (world.getBlockState(blockPos).getBlock() == Blocks.SOUL_SAND) {
             double soulSandItemHeight = 0.003;
-            if (is3DModel == false){
+            if (!is3DModel){
                 matrix.translate(0, 0, 0.09375 + soulSandItemHeight);
             }
-            if (shouldRotateRender == false){
+            if (!shouldRotateRender){
                 matrix.translate(0, 0.125 - (blockHeight / 4) + soulSandItemHeight, 0);
             }
         }
