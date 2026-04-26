@@ -1,0 +1,8 @@
+run/
+build/
+.idea/
+.gradle/
+*.log
+*.jar
+.DS_Store
+Thumbs.db

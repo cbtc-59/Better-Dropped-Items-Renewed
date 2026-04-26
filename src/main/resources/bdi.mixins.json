@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "io.github.cbtc_59.bdir.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ItemEntityMixin",
+    "ItemEntityRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

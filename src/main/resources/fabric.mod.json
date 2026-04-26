@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "betterdroppeditemsrenewed",
+  "version": "${version}",
+  "name": "Better Dropped Items Renewed",
+  "description": "Improves the visual design of items dropped on the ground.",
+  "authors": [
+    "cbtc-59",
+    "Ported to 1.21"
+  ],
+  "contact": {
+    "repo": "https://github.com/cbtc-59"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "io.github.cbtc_59.bdir.BetterDroppedItems"
+    ]
+  },
+  "mixins": [
+    "bdi.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.11",
+    "minecraft": "~1.21",
+    "java": ">=21"
+  }
+}

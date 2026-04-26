@@ -1,0 +1,42 @@
+plugins {
+    id 'java'
+    id 'maven-publish'
+    id 'fabric-loom' version '1.7.+'
+}
+
+group = 'io.github.cbtc_59'
+version = "${mod_version}"
+
+sourceCompatibility = 21
+targetCompatibility = 21
+
+repositories {
+    mavenCentral()
+    maven {
+        url 'https://maven.fabricmc.net/'
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:1.21"
+    mappings "net.fabricmc:yarn:1.21+build.2:v2"
+    modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version
+    }
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+jar {
+    archiveBaseName = "better-dropped-items-renewed"
+    archiveVersion = "${mod_version}-1.21"
+}
