@@ -1,6 +1,6 @@
 # Better Dropped Items Renewed
 
-[![License](https://img.shields.io/github/license/cbtc-59/better-dropped-items-renewed)](https://choosealicense.com/licenses/mit/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://choosealicense.com/licenses/mit/)
 
 将 Draylar 的 [Better Dropped Items](https://github.com/Draylar/better-dropped-items) （1.19）的掉落物渲染逻辑，
 借助AI在 Minecraft 1.21 Fabric 上以独立代码重新实现。
