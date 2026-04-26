@@ -11,3 +11,6 @@
 - **DeepSeek** —— debug
 - **通义灵码 (Tongyi Lingma)** —— debug
 - **cbtc-59** —— 逻辑微调、渲染偏移量调整及测试
+
+## 鸣谢
+*   原作者 Draylar (Better Dropped Items, MIT License)
