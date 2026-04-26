@@ -5,8 +5,7 @@
   "name": "Better Dropped Items Renewed",
   "description": "Improves the visual design of items dropped on the ground.",
   "authors": [
-    "cbtc-59",
-    "Ported to 1.21"
+    "cbtc-59"
   ],
   "contact": {
     "repo": "https://github.com/cbtc-59"
