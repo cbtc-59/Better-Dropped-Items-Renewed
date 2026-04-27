@@ -7,8 +7,8 @@
 
 ## 开发分工
 
+- **DeepSeek** —— 代码生成、debug
 - **豆包 (Doubao)** —— 代码生成
-- **DeepSeek** —— debug
 - **通义灵码 (Tongyi Lingma)** —— debug
 - **cbtc-59** —— 逻辑微调、渲染偏移量调整及测试
 
