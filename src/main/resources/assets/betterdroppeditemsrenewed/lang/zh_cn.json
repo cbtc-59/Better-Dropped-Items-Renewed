@@ -1,0 +1,6 @@
+{
+  "text.autoconfig.betterdroppeditemsrenewed.title": "Better Dropped Items Renewed 设置",
+
+  "text.autoconfig.betterdroppeditemsrenewed.option.debugMode": "调试模式",
+  "text.autoconfig.betterdroppeditemsrenewed.option.debugMode.@Tooltip": "是否开启调试模式，开启后会在聊天栏每秒输出掉落物信息。"
+}

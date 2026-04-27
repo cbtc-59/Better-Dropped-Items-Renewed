@@ -84,7 +84,7 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         }
         
         // 调试输出：在游戏聊天栏打印物品的详细信息（每秒一次）
-        if (dropped.age % 60 == 0 && BetterDroppedItems.DEBUG_MODE) {
+        if (dropped.age % 60 == 0 && BetterDroppedItems.CONFIG.debugMode) {
             String msg = String.format("[BDI调试] 物品: %s | 方块高度: %.4f | 是否旋转: %b | 是否为3D模型: %b | 堆叠数: %d",
                 item.getName().getString(), blockHeight, shouldRotateRender, is3DModel, itemStack.getCount());
             MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.literal(msg));
