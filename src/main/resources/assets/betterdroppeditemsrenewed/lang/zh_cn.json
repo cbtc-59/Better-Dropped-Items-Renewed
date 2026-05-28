@@ -1,6 +1,15 @@
 {
   "text.autoconfig.betterdroppeditemsrenewed.title": "Better Dropped Items Renewed 设置",
 
+  "text.autoconfig.betterdroppeditemsrenewed.option.initialRotationAngle": "初始朝向",
+  "text.autoconfig.betterdroppeditemsrenewed.option.initialRotationAngle.@Tooltip": "物品开始旋转时的朝向角度偏移",
+
+  "text.autoconfig.betterdroppeditemsrenewed.option.rotationSpeed": "旋转速度",
+  "text.autoconfig.betterdroppeditemsrenewed.option.rotationSpeed.@Tooltip": "物品在空中时的旋转快慢",
+
+  "text.autoconfig.betterdroppeditemsrenewed.option.itemPhysic2DRenderMode": "2D 物品整齐堆叠",
+  "text.autoconfig.betterdroppeditemsrenewed.option.itemPhysic2DRenderMode.@Tooltip": "使用Item Physic Lite的2D物品堆叠逻辑",
+
   "text.autoconfig.betterdroppeditemsrenewed.option.debugMode": "调试模式",
-  "text.autoconfig.betterdroppeditemsrenewed.option.debugMode.@Tooltip": "是否开启调试模式，开启后会在聊天栏每秒输出掉落物信息。"
+  "text.autoconfig.betterdroppeditemsrenewed.option.debugMode.@Tooltip": "正常游玩时建议关闭"
 }

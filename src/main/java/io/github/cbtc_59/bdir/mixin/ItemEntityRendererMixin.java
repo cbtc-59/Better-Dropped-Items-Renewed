@@ -28,6 +28,7 @@ import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -37,6 +38,13 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
     @Shadow
     @Final
     private ItemRenderer itemRenderer;
+
+    // 优化1：复用 Random 对象，避免每帧 new Random()
+    @Unique
+    private final Random bdiRandom = new Random();
+    // 优化3：方块碰撞箱高度缓存
+    @Unique
+    private static final java.util.Map<Block, Float> blockHeightCache = new java.util.HashMap<>();
     protected ItemEntityRendererMixin(EntityRendererFactory.Context ctx) {
         super(ctx);
     }
@@ -49,6 +57,11 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
     private void render(ItemEntity dropped, float f, float partialTicks, MatrixStack matrix, net.minecraft.client.render.VertexConsumerProvider vertexConsumerProvider, int light, CallbackInfo callback) {
         ItemStack itemStack = dropped.getStack();
         Item item = itemStack.getItem();
+        // 优化2：缓存 world / blockPos（避免重复调用）
+        World world = dropped.getWorld();
+        BlockPos blockPos = dropped.getBlockPos();
+        // 优化4：缓存 MinecraftClient 实例
+        MinecraftClient client = MinecraftClient.getInstance();
         // 计算随机种子
         long seed;
         if (itemStack.isEmpty()) {
@@ -56,10 +69,11 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         } else {
             seed = Registries.ITEM.getRawId(item) + itemStack.getDamage();
         }
-        Random random = new Random(seed);
+        // 优化1：复用 Random，setSeed 替代 new Random()
+        bdiRandom.setSeed(seed);
         matrix.push();
         // 获取模型
-        BakedModel bakedModel = itemRenderer.getModel(itemStack, dropped.getWorld(), null, 0);
+        BakedModel bakedModel = itemRenderer.getModel(itemStack, world, null, 0);
         boolean is3DModel = bakedModel.hasDepth();
         int renderCount = getRenderedAmount(itemStack);
         ItemEntityRotator rotator = (ItemEntityRotator) dropped;
@@ -69,25 +83,30 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         boolean shouldRotateRender = true;  // 默认开启旋转渲染（立起来）
         float blockHeight = 0.0F;  // 初始化方块高度
         
-        // 判断是否应该旋转
+        // 判断是否应该旋转（优化3：方块高度缓存）
         if (is3DModel) {
             Block block = ((BlockItem) item).getBlock();
-            World world = dropped.getWorld();
-            BlockPos blockPos = dropped.getBlockPos();
-            var shape = block.getDefaultState().getOutlineShape(world, blockPos);
-            blockHeight = (float) shape.getMax(Direction.Axis.Y);
+            Float cached = blockHeightCache.get(block);
+            if (cached == null) {
+                var shape = block.getDefaultState().getOutlineShape(world, blockPos);
+                cached = (float) shape.getMax(Direction.Axis.Y);
+                blockHeightCache.put(block, cached);
+            }
+            blockHeight = cached;
 
             // 两个条件都满足的话，关闭旋转渲染（保持平放）
             if (blockHeight <= 0.5F) {
                 shouldRotateRender = false;
             }
         }
-        
-        // 调试输出：在游戏聊天栏打印物品的详细信息（每秒一次）
-        if (dropped.age % 60 == 0 && BetterDroppedItems.CONFIG.debugMode) {
+
+        // 调试输出：每秒一次（使用 age 桶去重，避免多 pass 重复输出）
+        int debugBucket = dropped.age / 20;
+        if (debugBucket != rotator.bdi$getLastDebugAge() && BetterDroppedItems.CONFIG.debugMode) {
+            rotator.bdi$setLastDebugAge(debugBucket);
             String msg = String.format("[BDI调试] 物品: %s | 方块高度: %.4f | 是否旋转: %b | 是否为3D模型: %b | 堆叠数: %d",
                 item.getName().getString(), blockHeight, shouldRotateRender, is3DModel, itemStack.getCount());
-            MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.literal(msg));
+            client.inGameHud.getChatHud().addMessage(Text.literal(msg));
         }
 
         // 在旋转90度前对物品的渲染位置进行调整
@@ -96,16 +115,17 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         // 立起旋转：只有开启旋转渲染的物品才执行
         if (shouldRotateRender) {
             matrix.translate(0, 0.1875, 0);
-            // 修改为负值：绕X轴向前旋转90度
             matrix.multiply(new Quaternionf().fromAxisAngleRad(new Vector3f(1, 0, 0), -(float) Math.PI / 2));
             matrix.translate(0, -0.1875, 0);
         }
 
         // 状态分支处理
-        boolean isAboveWater = dropped.getWorld().getBlockState(dropped.getBlockPos().up()).getBlock() == Blocks.WATER;
+        boolean isAboveWater = world.getBlockState(blockPos.up()).getBlock() == Blocks.WATER;
         if (!dropped.isOnGround() && !dropped.isSubmergedInWater() && !isAboveWater) {
-            // 空中旋转
-            float rotation = ((float) dropped.age + partialTicks) / 20.0F + dropped.getHeight();
+            // 空中旋转（应用配置中的旋转速度倍率和初始方向偏移）
+            float speedMultiplier = BetterDroppedItems.CONFIG.rotationSpeed / 100.0F;
+            float initialOffset = (float) Math.toRadians(BetterDroppedItems.CONFIG.initialRotationAngle);
+            float rotation = (((float) dropped.age + partialTicks) / 20.0F + dropped.getHeight()) * speedMultiplier + initialOffset;
             if (shouldRotateRender) {
                 // 立起的物品：绕Z轴旋转
                 matrix.translate(0, 0.1875, 0);
@@ -135,8 +155,6 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         }
 
         // 特殊方块修正
-        World world = dropped.getWorld();
-        BlockPos blockPos = dropped.getBlockPos();
         if (world.getBlockState(blockPos).getBlock() == Blocks.SOUL_SAND) {
             double soulSandItemHeight = 0.003;
             if (!is3DModel){
@@ -151,49 +169,54 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         }
 
         // 堆叠渲染准备
-        float scaleX = transform.ground.scale.x;
-        float scaleY = transform.ground.scale.y;
         float scaleZ = transform.ground.scale.z;
 
         // 循环渲染每个物品模型
-        for (int u = 0; u < renderCount; u++) {
-            matrix.push();
-            if (u > 0) {
-                if (is3DModel) {
-                    // 3D模型：三轴随机偏移
-                    float x = (random.nextFloat() * 2.0F - 1.0F) * 0.15F;
-                    float y = (random.nextFloat() * 2.0F - 1.0F) * 0.15F;
-                    float z = (random.nextFloat() * 2.0F - 1.0F) * 0.15F;
-                    matrix.translate(x, y, z);
-                } else {
-                    // 2D模型：两轴偏移+随机旋转
-                    float x = (random.nextFloat() * 2.0F - 1.0F) * 0.15F * 0.5F;
-                    float y = (random.nextFloat() * 2.0F - 1.0F) * 0.15F * 0.5F;
-                    matrix.translate(x, y, 0.0F);
-                    matrix.multiply(new Quaternionf().fromAxisAngleRad(new Vector3f(0, 0, 1), random.nextFloat()));
-                }
+        if (BetterDroppedItems.CONFIG.itemPhysic2DRenderMode && !is3DModel) {
+            // ItemPhysic 2D 堆叠：无随机偏移 + 固定 0.09375 间距 + 预居中
+            float spacing = 0.09375F;
+            if (renderCount > 1) {
+                matrix.translate(0, 0, 0.046875F);
             }
-            // 渲染单个物品
-            itemRenderer.renderItem(
-                    itemStack,
-                    ModelTransformationMode.GROUND,
-                    false,
-                    matrix,
-                    vertexConsumerProvider,
-                    light,
-                    OverlayTexture.DEFAULT_UV,
-                    bakedModel
-            );
-            matrix.pop();
-            // 垂直分层
-            if (!is3DModel) {
-                matrix.translate(0.0F, 0.0F, 0.0625F * scaleZ);
+            matrix.translate(0, 0, -spacing * (renderCount - 1) * 0.5F);
+            for (int u = 0; u < renderCount; u++) {
+                matrix.push();
+                itemRenderer.renderItem(itemStack, ModelTransformationMode.GROUND, false, matrix, vertexConsumerProvider, light, OverlayTexture.DEFAULT_UV, bakedModel);
+                matrix.pop();
+                matrix.translate(0.0F, 0.0F, spacing);
+            }
+        } else {
+            for (int u = 0; u < renderCount; u++) {
+                matrix.push();
+                if (u > 0) {
+                    if (is3DModel) {
+                        // 3D模型：三轴随机偏移
+                        float x = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F;
+                        float y = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F;
+                        float z = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F;
+                        matrix.translate(x, y, z);
+                    } else {
+                        // 2D模型：两轴偏移+随机旋转
+                        float x = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F * 0.5F;
+                        float y = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F * 0.5F;
+                        matrix.translate(x, y, 0.0F);
+                        matrix.multiply(new Quaternionf().fromAxisAngleRad(new Vector3f(0, 0, 1), bdiRandom.nextFloat()));
+                    }
+                }
+                // 渲染单个物品
+                itemRenderer.renderItem(itemStack, ModelTransformationMode.GROUND, false, matrix, vertexConsumerProvider, light, OverlayTexture.DEFAULT_UV, bakedModel);
+                matrix.pop();
+                // 垂直分层
+                if (!is3DModel) {
+                    matrix.translate(0.0F, 0.0F, 0.0625F * scaleZ);
+                }
             }
         }
         matrix.pop();
         callback.cancel();
     }
     // 计算需要渲染的物品数量（原版逻辑）
+    @Unique
     private static int getRenderedAmount(ItemStack stack) {
         if (stack.getCount() == 1) return 1;
         if (stack.getCount() <= 16) return 2;
