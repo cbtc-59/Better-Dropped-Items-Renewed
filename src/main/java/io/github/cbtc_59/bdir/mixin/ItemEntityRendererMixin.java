@@ -39,15 +39,12 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
     @Final
     private ItemRenderer itemRenderer;
 
-    // 优化1：复用 Random 对象，避免每帧 new Random()
     @Unique
     private final Random bdiRandom = new Random();
-    // 优化5：复用 Quaternionf / Vector3f，避免每帧 new
     @Unique
     private final Quaternionf bdiQuat = new Quaternionf();
     @Unique
     private final Vector3f bdiVec = new Vector3f();
-    // 优化3：方块碰撞箱高度缓存
     @Unique
     private static final java.util.Map<Block, Float> blockHeightCache = new java.util.IdentityHashMap<>();
     protected ItemEntityRendererMixin(EntityRendererFactory.Context ctx) {
@@ -62,33 +59,28 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
     private void render(ItemEntity dropped, float f, float partialTicks, MatrixStack matrix, net.minecraft.client.render.VertexConsumerProvider vertexConsumerProvider, int light, CallbackInfo callback) {
         ItemStack itemStack = dropped.getStack();
         Item item = itemStack.getItem();
-        // 优化2：缓存 world / blockPos（避免重复调用）
         World world = dropped.getWorld();
         BlockPos blockPos = dropped.getBlockPos();
-        // 优化4：缓存 MinecraftClient 实例
         MinecraftClient client = MinecraftClient.getInstance();
-        // 计算随机种子
+
         long seed;
         if (itemStack.isEmpty()) {
             seed = 187;
         } else {
             seed = Registries.ITEM.getRawId(item) + itemStack.getDamage();
         }
-        // 优化1：复用 Random，setSeed 替代 new Random()
+
         bdiRandom.setSeed(seed);
         matrix.push();
-        // 获取模型
         BakedModel bakedModel = itemRenderer.getModel(itemStack, world, null, 0);
         boolean is3DModel = bakedModel.hasDepth() && item instanceof BlockItem;
         int renderCount = getRenderedAmount(itemStack);
         ItemEntityRotator rotator = (ItemEntityRotator) dropped;
         // 获取物品的ground渲染变换，用于检测渲染高度
         var transform = bakedModel.getTransformation();
-        // 物品分类判断：检测渲染高度
         boolean shouldRotateRender = true;  // 默认开启旋转渲染（立起来）
-        float blockHeight = 0.0F;  // 初始化方块高度
+        float blockHeight = 0.0F;
         
-        // 判断是否应该旋转（优化3：方块高度缓存）
         if (is3DModel) {
             Block block = ((BlockItem) item).getBlock();
             Float cached = blockHeightCache.get(block);
@@ -99,7 +91,6 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
             }
             blockHeight = cached;
 
-            // 两个条件都满足的话，关闭旋转渲染（保持平放）
             if (blockHeight <= 0.5F) {
                 shouldRotateRender = false;
             }
@@ -114,7 +105,6 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
             client.inGameHud.getChatHud().addMessage(Text.literal(msg));
         }
 
-        // 在旋转90度前对物品的渲染位置进行调整
         matrix.translate(0, -0.0625 /* 1/16 */, 0);
 
         // 立起旋转：只有开启旋转渲染的物品才执行
@@ -122,7 +112,6 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
             rotateAroundPivot(matrix, 1, 0, 0, -(float) Math.PI / 2);
         }
 
-        // 状态分支处理
         boolean isAboveWater = world.getBlockState(blockPos.up()).getBlock() == Blocks.WATER;
         if (!dropped.isOnGround() && !dropped.isSubmergedInWater() && !isAboveWater) {
             // 空中旋转（应用配置中的旋转速度倍率和初始方向偏移）
@@ -148,12 +137,10 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
             }
         }
 
-        // 对2D物品进行微调
         if (!is3DModel){
             matrix.translate(0, 0.0625 /* 1/16 */, -0.109375 /* 7/64 */);
         }
 
-        // 特殊方块修正
         if (world.getBlockState(blockPos).getBlock() == Blocks.SOUL_SAND) {
             double soulSandItemHeight = 0.003;
             if (!is3DModel){
@@ -167,10 +154,7 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
             matrix.translate(0, 0.1275, 0);
         }
 
-        // 堆叠渲染准备
         float scaleZ = transform.ground.scale.z;
-
-        // 循环渲染每个物品模型
         if (BetterDroppedItems.CONFIG.itemPhysic2DRenderMode && !is3DModel) {
             // ItemPhysic 2D 堆叠：无随机偏移 + 固定 0.09375 间距 + 预居中
             float spacing = 0.09375F /* 3/32 */;
@@ -202,10 +186,8 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
                         matrix.multiply(bdiQuat.fromAxisAngleRad(bdiVec.set(0, 0, 1), bdiRandom.nextFloat()));
                     }
                 }
-                // 渲染单个物品
                 itemRenderer.renderItem(itemStack, ModelTransformationMode.GROUND, false, matrix, vertexConsumerProvider, light, OverlayTexture.DEFAULT_UV, bakedModel);
                 matrix.pop();
-                // 垂直分层
                 if (!is3DModel) {
                     matrix.translate(0.0F, 0.0F, 0.0625F /* 1/16 */ * scaleZ);
                 }
