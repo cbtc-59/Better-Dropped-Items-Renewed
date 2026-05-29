@@ -74,7 +74,7 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         matrix.push();
         // 获取模型
         BakedModel bakedModel = itemRenderer.getModel(itemStack, world, null, 0);
-        boolean is3DModel = bakedModel.hasDepth();
+        boolean is3DModel = bakedModel.hasDepth() && item instanceof BlockItem;
         int renderCount = getRenderedAmount(itemStack);
         ItemEntityRotator rotator = (ItemEntityRotator) dropped;
         // 获取物品的ground渲染变换，用于检测渲染高度
@@ -84,7 +84,7 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         float blockHeight = 0.0F;  // 初始化方块高度
         
         // 判断是否应该旋转（优化3：方块高度缓存）
-        if (is3DModel) {
+        if (is3DModel && item instanceof BlockItem) {
             Block block = ((BlockItem) item).getBlock();
             Float cached = blockHeightCache.get(block);
             if (cached == null) {
