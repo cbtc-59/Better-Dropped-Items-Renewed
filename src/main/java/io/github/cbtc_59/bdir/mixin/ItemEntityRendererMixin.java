@@ -42,9 +42,14 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
     // 优化1：复用 Random 对象，避免每帧 new Random()
     @Unique
     private final Random bdiRandom = new Random();
+    // 优化5：复用 Quaternionf / Vector3f，避免每帧 new
+    @Unique
+    private final Quaternionf bdiQuat = new Quaternionf();
+    @Unique
+    private final Vector3f bdiVec = new Vector3f();
     // 优化3：方块碰撞箱高度缓存
     @Unique
-    private static final java.util.Map<Block, Float> blockHeightCache = new java.util.HashMap<>();
+    private static final java.util.Map<Block, Float> blockHeightCache = new java.util.IdentityHashMap<>();
     protected ItemEntityRendererMixin(EntityRendererFactory.Context ctx) {
         super(ctx);
     }
@@ -84,7 +89,7 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         float blockHeight = 0.0F;  // 初始化方块高度
         
         // 判断是否应该旋转（优化3：方块高度缓存）
-        if (is3DModel && item instanceof BlockItem) {
+        if (is3DModel) {
             Block block = ((BlockItem) item).getBlock();
             Float cached = blockHeightCache.get(block);
             if (cached == null) {
@@ -110,13 +115,11 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         }
 
         // 在旋转90度前对物品的渲染位置进行调整
-        matrix.translate(0, -0.0625, 0);
+        matrix.translate(0, -0.0625 /* 1/16 */, 0);
 
         // 立起旋转：只有开启旋转渲染的物品才执行
         if (shouldRotateRender) {
-            matrix.translate(0, 0.1875, 0);
-            matrix.multiply(new Quaternionf().fromAxisAngleRad(new Vector3f(1, 0, 0), -(float) Math.PI / 2));
-            matrix.translate(0, -0.1875, 0);
+            rotateAroundPivot(matrix, 1, 0, 0, -(float) Math.PI / 2);
         }
 
         // 状态分支处理
@@ -128,37 +131,33 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
             float rotation = (((float) dropped.age + partialTicks) / 20.0F + dropped.getHeight()) * speedMultiplier + initialOffset;
             if (shouldRotateRender) {
                 // 立起的物品：绕Z轴旋转
-                matrix.translate(0, 0.1875, 0);
-                matrix.multiply(new Quaternionf().fromAxisAngleRad(new Vector3f(0, 0, 1), rotation));
-                matrix.translate(0, -0.1875, 0);
-                rotator.setRotation(new Vec3d(0, 0, rotation));
+                rotateAroundPivot(matrix, 0, 0, 1, rotation);
+                rotator.bdi$setRotation(new Vec3d(0, 0, rotation));
             } else {
                 // 平放的物品：绕Y轴旋转
-                matrix.multiply(new Quaternionf().fromAxisAngleRad(new Vector3f(0, 1, 0), rotation));
-                rotator.setRotation(new Vec3d(0, rotation, 0));
+                matrix.multiply(bdiQuat.fromAxisAngleRad(bdiVec.set(0, 1, 0), rotation));
+                rotator.bdi$setRotation(new Vec3d(0, rotation, 0));
             }
         } else {
             // 落地状态：保持之前的旋转角度
             if (shouldRotateRender) {
-                matrix.translate(0, 0.1875, 0);
-                matrix.multiply(new Quaternionf().fromAxisAngleRad(new Vector3f(0, 0, 1), (float) rotator.getRotation().z));
-                matrix.translate(0, -0.1875, 0);
+                rotateAroundPivot(matrix, 0, 0, 1, (float) rotator.bdi$getRotation().z);
             } else {
                 // 平放的物品：绕Y轴保持旋转
-                matrix.multiply(new Quaternionf().fromAxisAngleRad(new Vector3f(0, 1, 0), (float) rotator.getRotation().y));
+                matrix.multiply(bdiQuat.fromAxisAngleRad(bdiVec.set(0, 1, 0), (float) rotator.bdi$getRotation().y));
             }
         }
 
         // 对2D物品进行微调
         if (!is3DModel){
-            matrix.translate(0, 0.0625, -0.109375);
+            matrix.translate(0, 0.0625 /* 1/16 */, -0.109375 /* 7/64 */);
         }
 
         // 特殊方块修正
         if (world.getBlockState(blockPos).getBlock() == Blocks.SOUL_SAND) {
             double soulSandItemHeight = 0.003;
             if (!is3DModel){
-                matrix.translate(0, 0, 0.09375 + soulSandItemHeight);
+                matrix.translate(0, 0, 0.09375 /* 3/32 */ + soulSandItemHeight);
             }
             if (!shouldRotateRender){
                 matrix.translate(0, 0.125 - (blockHeight / 4) + soulSandItemHeight, 0);
@@ -174,9 +173,9 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         // 循环渲染每个物品模型
         if (BetterDroppedItems.CONFIG.itemPhysic2DRenderMode && !is3DModel) {
             // ItemPhysic 2D 堆叠：无随机偏移 + 固定 0.09375 间距 + 预居中
-            float spacing = 0.09375F;
+            float spacing = 0.09375F /* 3/32 */;
             if (renderCount > 1) {
-                matrix.translate(0, 0, 0.046875F);
+                matrix.translate(0, 0, 0.046875F /* 3/64 */);
             }
             matrix.translate(0, 0, -spacing * (renderCount - 1) * 0.5F);
             for (int u = 0; u < renderCount; u++) {
@@ -200,7 +199,7 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
                         float x = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F * 0.5F;
                         float y = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F * 0.5F;
                         matrix.translate(x, y, 0.0F);
-                        matrix.multiply(new Quaternionf().fromAxisAngleRad(new Vector3f(0, 0, 1), bdiRandom.nextFloat()));
+                        matrix.multiply(bdiQuat.fromAxisAngleRad(bdiVec.set(0, 0, 1), bdiRandom.nextFloat()));
                     }
                 }
                 // 渲染单个物品
@@ -208,7 +207,7 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
                 matrix.pop();
                 // 垂直分层
                 if (!is3DModel) {
-                    matrix.translate(0.0F, 0.0F, 0.0625F * scaleZ);
+                    matrix.translate(0.0F, 0.0F, 0.0625F /* 1/16 */ * scaleZ);
                 }
             }
         }
@@ -223,5 +222,12 @@ public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity>
         if (stack.getCount() <= 32) return 3;
         if (stack.getCount() <= 48) return 4;
         return 5;
+    }
+
+    @Unique
+    private void rotateAroundPivot(MatrixStack matrix, float x, float y, float z, float angle) {
+        matrix.translate(0, 0.1875 /* 3/16 */, 0);
+        matrix.multiply(bdiQuat.fromAxisAngleRad(bdiVec.set(x, y, z), angle));
+        matrix.translate(0, -0.1875 /* 3/16 */, 0);
     }
 }

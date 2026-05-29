@@ -9,17 +9,17 @@ import org.spongepowered.asm.mixin.Unique;
 @Mixin(ItemEntity.class)
 public class ItemEntityMixin implements ItemEntityRotator {
     @Unique
-    private Vec3d rotation = new Vec3d(0, 0, 0);
+    private Vec3d rotation = Vec3d.ZERO;
     @Unique
     private int bdiLastDebugAge = -1;
 
     @Override
-    public Vec3d getRotation() {
+    public Vec3d bdi$getRotation() {
         return rotation;
     }
 
     @Override
-    public void setRotation(Vec3d rotation) {
+    public void bdi$setRotation(Vec3d rotation) {
         this.rotation = rotation;
     }
 
