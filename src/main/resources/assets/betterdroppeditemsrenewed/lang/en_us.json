@@ -1,0 +1,15 @@
+{
+  "text.autoconfig.betterdroppeditemsrenewed.title": "Better Dropped Items Renewed Settings",
+
+  "text.autoconfig.betterdroppeditemsrenewed.option.initialRotationAngle": "Initial Rotation",
+  "text.autoconfig.betterdroppeditemsrenewed.option.initialRotationAngle.@Tooltip": "Starting angle offset for item rotation",
+
+  "text.autoconfig.betterdroppeditemsrenewed.option.rotationSpeed": "Rotation Speed",
+  "text.autoconfig.betterdroppeditemsrenewed.option.rotationSpeed.@Tooltip": "How fast items spin while in the air",
+
+  "text.autoconfig.betterdroppeditemsrenewed.option.itemPhysic2DRenderMode": "Neat 2D Item Stacking",
+  "text.autoconfig.betterdroppeditemsrenewed.option.itemPhysic2DRenderMode.@Tooltip": "Use ItemPhysic Lite's 2D item stacking logic",
+
+  "text.autoconfig.betterdroppeditemsrenewed.option.debugMode": "Debug Mode",
+  "text.autoconfig.betterdroppeditemsrenewed.option.debugMode.@Tooltip": "Recommended to disable during normal gameplay"
+}
