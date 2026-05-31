@@ -5,6 +5,7 @@ import com.mojang.math.Axis;
 import io.github.cbtc_59.bdir.BetterDroppedItems;
 import io.github.cbtc_59.bdir.util.ItemEntityRenderStateExtender;
 import io.github.cbtc_59.bdir.util.ItemEntityRotator;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.ItemEntityRenderer;
 import net.minecraft.client.renderer.entity.state.ItemEntityRenderState;
@@ -12,6 +13,7 @@ import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.BlockItem;
@@ -79,9 +81,10 @@ public abstract class ItemEntityRendererMixin {
         int debugBucket = entity.getAge() / 20;
         if (debugBucket != rotator.bdi$getLastDebugAge() && BetterDroppedItems.CONFIG.debugMode) {
             rotator.bdi$setLastDebugAge(debugBucket);
-            String msg = String.format("[BDI] %s h=%.2f rot=%b 3D=%b n=%d",
+            String msg = String.format("[BDIR调试] 物品: %s | 方块高度: %.4f | 是否旋转: %b | 是否为3D模型: %b | 堆叠数: %d",
                 item.getName(itemStack).getString(), blockHeight, shouldRotateRender, is3DModel, itemStack.getCount());
-            BetterDroppedItems.LOGGER.info("[BDI] {}", msg);
+            var mc = Minecraft.getInstance();
+            if (mc.player != null) mc.player.sendSystemMessage(Component.literal(msg));
         }
 
         // 旋转计算
