@@ -15,6 +15,9 @@
   "entrypoints": {
     "client": [
       "io.github.cbtc_59.bdir.BetterDroppedItems"
+    ],
+    "modmenu": [
+      "io.github.cbtc_59.bdir.config.ModMenuIntegration"
     ]
   },
   "mixins": [

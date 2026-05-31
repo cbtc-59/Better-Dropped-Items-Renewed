@@ -20,6 +20,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.SkullBlock;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -78,8 +79,9 @@ public abstract class ItemEntityRendererMixin {
         int debugBucket = entity.getAge() / 20;
         if (debugBucket != rotator.bdi$getLastDebugAge() && BetterDroppedItems.CONFIG.debugMode) {
             rotator.bdi$setLastDebugAge(debugBucket);
-            BetterDroppedItems.LOGGER.info("[BDI调试] 物品: {} | 方块高度: {} | 是否旋转: {} | 3D模型: {} | 堆叠数: {}",
+            String msg = String.format("[BDI] %s h=%.2f rot=%b 3D=%b n=%d",
                 item.getName(itemStack).getString(), blockHeight, shouldRotateRender, is3DModel, itemStack.getCount());
+            BetterDroppedItems.LOGGER.info("[BDI] {}", msg);
         }
 
         // 旋转计算
@@ -97,6 +99,11 @@ public abstract class ItemEntityRendererMixin {
         } else {
             ext.bdi$setRotation(rotator.bdi$getRotation());
         }
+        // 灵魂沙检测
+        ext.bdi$setSoulSand(entity.level().getBlockState(entity.blockPosition()).getBlock() == Blocks.SOUL_SAND);
+        // 头颅检测
+        ext.bdi$setSkull(item instanceof BlockItem && ((BlockItem) item).getBlock() instanceof SkullBlock);
+
         ext.bdi$setLastDebugAge(debugBucket);
     }
 
@@ -111,7 +118,7 @@ public abstract class ItemEntityRendererMixin {
         boolean is3DModel = ext.bdi$is3DModel();
         boolean shouldRotateRender = ext.bdi$shouldRotateRender();
         Vec3 rotation = ext.bdi$getRotation();
-        int renderCount = getRenderedAmount(state.count);
+        int renderCount = state.count; // state.count 已经是 getRenderedAmount 转换后的模型数量
 
         random.setSeed(state.seed);
         poseStack.pushPose();
@@ -133,6 +140,21 @@ public abstract class ItemEntityRendererMixin {
         // 2D物品微调
         if (!is3DModel) {
             poseStack.translate(0, 0.0625, -0.109375);
+        }
+
+        // 灵魂沙特殊处理
+        if (ext.bdi$isSoulSand()) {
+            double soulSandItemHeight = 0.003;
+            if (!is3DModel) {
+                poseStack.translate(0, 0, 0.09375 /* 3/32 */ + soulSandItemHeight);
+            }
+            if (!shouldRotateRender) {
+                poseStack.translate(0, 0.125 - (ext.bdi$getBlockHeight() / 4) + soulSandItemHeight, 0);
+            }
+        }
+        // 头颅
+        if (ext.bdi$isSkull()) {
+            poseStack.translate(0, 0.1275, 0);
         }
 
         // 堆叠渲染
@@ -174,15 +196,6 @@ public abstract class ItemEntityRendererMixin {
 
         poseStack.popPose();
         ci.cancel();
-    }
-
-    @Unique
-    private static int getRenderedAmount(int count) {
-        if (count == 1) return 1;
-        if (count <= 16) return 2;
-        if (count <= 32) return 3;
-        if (count <= 48) return 4;
-        return 5;
     }
 
     @Unique
