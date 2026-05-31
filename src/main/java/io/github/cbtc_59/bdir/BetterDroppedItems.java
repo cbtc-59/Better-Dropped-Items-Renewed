@@ -20,6 +20,6 @@ public class BetterDroppedItems implements ClientModInitializer {
         AutoConfig.register(ModConfig.class, GsonConfigSerializer::new);
         CONFIG = AutoConfig.getConfigHolder(ModConfig.class).getConfig();
 
-        LOGGER.info("Better Dropped Items 1.21 已加载！");
+        LOGGER.info("Better Dropped Items 26.1 已加载！");
     }
 }

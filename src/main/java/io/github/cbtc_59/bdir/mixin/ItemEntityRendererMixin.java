@@ -1,30 +1,26 @@
 package io.github.cbtc_59.bdir.mixin;
+
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import io.github.cbtc_59.bdir.BetterDroppedItems;
+import io.github.cbtc_59.bdir.util.ItemEntityRenderStateExtender;
 import io.github.cbtc_59.bdir.util.ItemEntityRotator;
-import net.minecraft.block.Block;
-import net.minecraft.block.Blocks;
-import net.minecraft.block.SkullBlock;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.text.Text;
-import net.minecraft.client.render.entity.EntityRenderer;
-import net.minecraft.client.render.entity.EntityRendererFactory;
-import net.minecraft.client.render.entity.ItemEntityRenderer;
-import net.minecraft.client.render.item.ItemRenderer;
-import net.minecraft.client.render.model.BakedModel;
-import net.minecraft.client.render.model.json.ModelTransformationMode;
-import net.minecraft.client.render.OverlayTexture;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import org.joml.Vector3f;
-import org.joml.Quaternionf;
-import net.minecraft.world.World;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.entity.ItemEntityRenderer;
+import net.minecraft.client.renderer.entity.state.ItemEntityRenderState;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -32,184 +28,174 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import java.util.Random;
+
 @Mixin(ItemEntityRenderer.class)
-public abstract class ItemEntityRendererMixin extends EntityRenderer<ItemEntity> {
+public abstract class ItemEntityRendererMixin {
+
     @Shadow
     @Final
-    private ItemRenderer itemRenderer;
-
-    @Unique
-    private final Random bdiRandom = new Random();
-    @Unique
-    private final Quaternionf bdiQuat = new Quaternionf();
-    @Unique
-    private final Vector3f bdiVec = new Vector3f();
+    private RandomSource random;
     @Unique
     private static final java.util.Map<Block, Float> blockHeightCache = new java.util.IdentityHashMap<>();
-    protected ItemEntityRendererMixin(EntityRendererFactory.Context ctx) {
-        super(ctx);
-    }
-    @Inject(method = "<init>", at = @At("TAIL"))
-    private void init(EntityRendererFactory.Context context, CallbackInfo ci) {
-        // 移除地面阴影
-        this.shadowRadius = 0;
-    }
-    @Inject(method = "render(Lnet/minecraft/entity/ItemEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("HEAD"), cancellable = true)
-    private void render(ItemEntity dropped, float f, float partialTicks, MatrixStack matrix, net.minecraft.client.render.VertexConsumerProvider vertexConsumerProvider, int light, CallbackInfo callback) {
-        ItemStack itemStack = dropped.getStack();
+
+    /**
+     * 在提取渲染状态时计算并存储我们的自定义数据
+     */
+    @Inject(method = "extractRenderState(Lnet/minecraft/world/entity/item/ItemEntity;Lnet/minecraft/client/renderer/entity/state/ItemEntityRenderState;F)V",
+            at = @At("TAIL"))
+    private void extractOurState(ItemEntity entity, ItemEntityRenderState state, float partialTicks, CallbackInfo ci) {
+        ItemEntityRenderStateExtender ext = (ItemEntityRenderStateExtender) state;
+        ItemEntityRotator rotator = (ItemEntityRotator) entity;
+        ItemStack itemStack = entity.getItem();
         Item item = itemStack.getItem();
-        World world = dropped.getWorld();
-        BlockPos blockPos = dropped.getBlockPos();
-        MinecraftClient client = MinecraftClient.getInstance();
 
-        long seed;
-        if (itemStack.isEmpty()) {
-            seed = 187;
-        } else {
-            seed = Registries.ITEM.getRawId(item) + itemStack.getDamage();
-        }
+        // 判断是否3D模型（方块物品）
+        boolean is3DModel = item instanceof BlockItem;
+        ext.bdi$set3DModel(is3DModel);
 
-        bdiRandom.setSeed(seed);
-        matrix.push();
-        BakedModel bakedModel = itemRenderer.getModel(itemStack, world, null, 0);
-        boolean is3DModel = bakedModel.hasDepth() && item instanceof BlockItem;
-        int renderCount = getRenderedAmount(itemStack);
-        ItemEntityRotator rotator = (ItemEntityRotator) dropped;
-        // 获取物品的ground渲染变换，用于检测渲染高度
-        var transform = bakedModel.getTransformation();
-        boolean shouldRotateRender = true;  // 默认开启旋转渲染（立起来）
+        // 方块高度检测
         float blockHeight = 0.0F;
-        
+        boolean shouldRotateRender = true;
         if (is3DModel) {
             Block block = ((BlockItem) item).getBlock();
             Float cached = blockHeightCache.get(block);
             if (cached == null) {
-                var shape = block.getDefaultState().getOutlineShape(world, blockPos);
-                cached = (float) shape.getMax(Direction.Axis.Y);
+                Level level = entity.level();
+                BlockPos pos = entity.blockPosition();
+                var shape = block.defaultBlockState().getShape(level, pos);
+                cached = (float) shape.max(Direction.Axis.Y);
                 blockHeightCache.put(block, cached);
             }
             blockHeight = cached;
-
             if (blockHeight <= 0.5F) {
                 shouldRotateRender = false;
             }
         }
+        ext.bdi$setBlockHeight(blockHeight);
+        ext.bdi$setShouldRotateRender(shouldRotateRender);
 
-        // 调试输出：每秒一次（使用 age 桶去重，避免多 pass 重复输出）
-        int debugBucket = dropped.age / 20;
+        // 调试输出
+        int debugBucket = entity.getAge() / 20;
         if (debugBucket != rotator.bdi$getLastDebugAge() && BetterDroppedItems.CONFIG.debugMode) {
             rotator.bdi$setLastDebugAge(debugBucket);
-            String msg = String.format("[BDI调试] 物品: %s | 方块高度: %.4f | 是否旋转: %b | 是否为3D模型: %b | 堆叠数: %d",
-                item.getName().getString(), blockHeight, shouldRotateRender, is3DModel, itemStack.getCount());
-            client.inGameHud.getChatHud().addMessage(Text.literal(msg));
+            BetterDroppedItems.LOGGER.info("[BDI调试] 物品: {} | 方块高度: {} | 是否旋转: {} | 3D模型: {} | 堆叠数: {}",
+                item.getName(itemStack).getString(), blockHeight, shouldRotateRender, is3DModel, itemStack.getCount());
         }
 
-        matrix.translate(0, -0.0625 /* 1/16 */, 0);
-
-        // 立起旋转：只有开启旋转渲染的物品才执行
-        if (shouldRotateRender) {
-            rotateAroundPivot(matrix, 1, 0, 0, -(float) Math.PI / 2);
-        }
-
-        boolean isAboveWater = world.getBlockState(blockPos.up()).getBlock() == Blocks.WATER;
-        if (!dropped.isOnGround() && !dropped.isSubmergedInWater() && !isAboveWater) {
-            // 空中旋转（应用配置中的旋转速度倍率和初始方向偏移）
+        // 旋转计算
+        boolean isAboveWater = entity.level().getBlockState(entity.blockPosition().above()).getBlock() == Blocks.WATER;
+        if (!entity.onGround() && !entity.isInWater() && !isAboveWater) {
             float speedMultiplier = BetterDroppedItems.CONFIG.rotationSpeed / 100.0F;
             float initialOffset = (float) Math.toRadians(BetterDroppedItems.CONFIG.initialRotationAngle);
-            float rotation = (((float) dropped.age + partialTicks) / 20.0F + dropped.getHeight()) * speedMultiplier + initialOffset;
+            float rotation = (state.ageInTicks / 20.0F + state.bobOffset) * speedMultiplier + initialOffset;
             if (shouldRotateRender) {
-                // 立起的物品：绕Z轴旋转
-                rotateAroundPivot(matrix, 0, 0, 1, rotation);
-                rotator.bdi$setRotation(new Vec3d(0, 0, rotation));
+                ext.bdi$setRotation(new Vec3(0, 0, rotation));
             } else {
-                // 平放的物品：绕Y轴旋转
-                matrix.multiply(bdiQuat.fromAxisAngleRad(bdiVec.set(0, 1, 0), rotation));
-                rotator.bdi$setRotation(new Vec3d(0, rotation, 0));
+                ext.bdi$setRotation(new Vec3(0, rotation, 0));
             }
+            rotator.bdi$setRotation(ext.bdi$getRotation());
         } else {
-            // 落地状态：保持之前的旋转角度
-            if (shouldRotateRender) {
-                rotateAroundPivot(matrix, 0, 0, 1, (float) rotator.bdi$getRotation().z);
-            } else {
-                // 平放的物品：绕Y轴保持旋转
-                matrix.multiply(bdiQuat.fromAxisAngleRad(bdiVec.set(0, 1, 0), (float) rotator.bdi$getRotation().y));
-            }
+            ext.bdi$setRotation(rotator.bdi$getRotation());
+        }
+        ext.bdi$setLastDebugAge(debugBucket);
+    }
+
+    /**
+     * 提交渲染——替代原版的 submit 实现我们的自定义渲染
+     */
+    @Inject(method = "submit(Lnet/minecraft/client/renderer/entity/state/ItemEntityRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
+            at = @At("HEAD"), cancellable = true)
+    private void submit(ItemEntityRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera, CallbackInfo ci) {
+        ItemEntityRenderStateExtender ext = (ItemEntityRenderStateExtender) state;
+
+        boolean is3DModel = ext.bdi$is3DModel();
+        boolean shouldRotateRender = ext.bdi$shouldRotateRender();
+        Vec3 rotation = ext.bdi$getRotation();
+        int renderCount = getRenderedAmount(state.count);
+
+        random.setSeed(state.seed);
+        poseStack.pushPose();
+
+        poseStack.translate(0, -0.0625, 0);
+
+        // 立起旋转
+        if (shouldRotateRender) {
+            rotateAroundPivotX(poseStack, -(float) Math.PI / 2);
         }
 
-        if (!is3DModel){
-            matrix.translate(0, 0.0625 /* 1/16 */, -0.109375 /* 7/64 */);
+        // 应用旋转角度
+        if (shouldRotateRender) {
+            rotateAroundPivotZ(poseStack, (float) rotation.z);
+        } else {
+            poseStack.mulPose(Axis.YP.rotation((float) rotation.y));
         }
 
-        if (world.getBlockState(blockPos).getBlock() == Blocks.SOUL_SAND) {
-            double soulSandItemHeight = 0.003;
-            if (!is3DModel){
-                matrix.translate(0, 0, 0.09375 /* 3/32 */ + soulSandItemHeight);
-            }
-            if (!shouldRotateRender){
-                matrix.translate(0, 0.125 - (blockHeight / 4) + soulSandItemHeight, 0);
-            }
-        }
-        if (item instanceof BlockItem && ((BlockItem)item).getBlock() instanceof SkullBlock) {
-            matrix.translate(0, 0.1275, 0);
+        // 2D物品微调
+        if (!is3DModel) {
+            poseStack.translate(0, 0.0625, -0.109375);
         }
 
-        float scaleZ = transform.ground.scale.z;
+        // 堆叠渲染
         if (BetterDroppedItems.CONFIG.itemPhysic2DRenderMode && !is3DModel) {
-            // ItemPhysic 2D 堆叠：无随机偏移 + 固定 0.09375 间距 + 预居中
-            float spacing = 0.09375F /* 3/32 */;
+            float spacing = 0.09375F;
             if (renderCount > 1) {
-                matrix.translate(0, 0, 0.046875F /* 3/64 */);
+                poseStack.translate(0, 0, 0.046875F);
             }
-            matrix.translate(0, 0, -spacing * (renderCount - 1) * 0.5F);
+            poseStack.translate(0, 0, -spacing * (renderCount - 1) * 0.5F);
             for (int u = 0; u < renderCount; u++) {
-                matrix.push();
-                itemRenderer.renderItem(itemStack, ModelTransformationMode.GROUND, false, matrix, vertexConsumerProvider, light, OverlayTexture.DEFAULT_UV, bakedModel);
-                matrix.pop();
-                matrix.translate(0.0F, 0.0F, spacing);
+                poseStack.pushPose();
+                state.item.submit(poseStack, collector, state.lightCoords, OverlayTexture.NO_OVERLAY, state.outlineColor);
+                poseStack.popPose();
+                poseStack.translate(0.0F, 0.0F, spacing);
             }
         } else {
             for (int u = 0; u < renderCount; u++) {
-                matrix.push();
+                poseStack.pushPose();
                 if (u > 0) {
                     if (is3DModel) {
-                        // 3D模型：三轴随机偏移
-                        float x = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F;
-                        float y = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F;
-                        float z = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F;
-                        matrix.translate(x, y, z);
+                        float x = (random.nextFloat() * 2.0F - 1.0F) * 0.15F;
+                        float y = (random.nextFloat() * 2.0F - 1.0F) * 0.15F;
+                        float z = (random.nextFloat() * 2.0F - 1.0F) * 0.15F;
+                        poseStack.translate(x, y, z);
                     } else {
-                        // 2D模型：两轴偏移+随机旋转
-                        float x = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F * 0.5F;
-                        float y = (bdiRandom.nextFloat() * 2.0F - 1.0F) * 0.15F * 0.5F;
-                        matrix.translate(x, y, 0.0F);
-                        matrix.multiply(bdiQuat.fromAxisAngleRad(bdiVec.set(0, 0, 1), bdiRandom.nextFloat()));
+                        float x = (random.nextFloat() * 2.0F - 1.0F) * 0.15F * 0.5F;
+                        float y = (random.nextFloat() * 2.0F - 1.0F) * 0.15F * 0.5F;
+                        poseStack.translate(x, y, 0.0F);
+                        poseStack.mulPose(Axis.ZP.rotation(random.nextFloat()));
                     }
                 }
-                itemRenderer.renderItem(itemStack, ModelTransformationMode.GROUND, false, matrix, vertexConsumerProvider, light, OverlayTexture.DEFAULT_UV, bakedModel);
-                matrix.pop();
+                state.item.submit(poseStack, collector, state.lightCoords, OverlayTexture.NO_OVERLAY, state.outlineColor);
+                poseStack.popPose();
                 if (!is3DModel) {
-                    matrix.translate(0.0F, 0.0F, 0.0625F /* 1/16 */ * scaleZ);
+                    poseStack.translate(0.0F, 0.0F, 0.0625F);
                 }
             }
         }
-        matrix.pop();
-        callback.cancel();
+
+        poseStack.popPose();
+        ci.cancel();
     }
-    // 计算需要渲染的物品数量（原版逻辑）
+
     @Unique
-    private static int getRenderedAmount(ItemStack stack) {
-        if (stack.getCount() == 1) return 1;
-        if (stack.getCount() <= 16) return 2;
-        if (stack.getCount() <= 32) return 3;
-        if (stack.getCount() <= 48) return 4;
+    private static int getRenderedAmount(int count) {
+        if (count == 1) return 1;
+        if (count <= 16) return 2;
+        if (count <= 32) return 3;
+        if (count <= 48) return 4;
         return 5;
     }
 
     @Unique
-    private void rotateAroundPivot(MatrixStack matrix, float x, float y, float z, float angle) {
-        matrix.translate(0, 0.1875 /* 3/16 */, 0);
-        matrix.multiply(bdiQuat.fromAxisAngleRad(bdiVec.set(x, y, z), angle));
-        matrix.translate(0, -0.1875 /* 3/16 */, 0);
+    private void rotateAroundPivotX(PoseStack poseStack, float angle) {
+        poseStack.translate(0, 0.1875, 0);
+        poseStack.mulPose(Axis.XP.rotation(angle));
+        poseStack.translate(0, -0.1875, 0);
+    }
+
+    @Unique
+    private void rotateAroundPivotZ(PoseStack poseStack, float angle) {
+        poseStack.translate(0, 0.1875, 0);
+        poseStack.mulPose(Axis.ZP.rotation(angle));
+        poseStack.translate(0, -0.1875, 0);
     }
 }
